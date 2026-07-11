@@ -1,0 +1,5 @@
+.cache/
+registry/config.json
+registry/nodes.json
+vpn-registry
+*.tmp
