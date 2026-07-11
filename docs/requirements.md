@@ -60,7 +60,7 @@ File: `install-node.sh`
 
 ## Registry Service
 
-Directory: `registry/`
+Directory: `go-registry/`
 
 HTTP endpoints:
 

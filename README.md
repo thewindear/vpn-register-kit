@@ -14,20 +14,20 @@ Version 1 includes:
 
 ```text
 install-node.sh          # run on each VPN node server
-install-registry.sh      # optional registry systemd installer
-registry/main.go         # Go registry service and CLI
-registry/config.example.json
+install-go-registry.sh   # optional Go registry systemd installer
+go-registry/             # Go registry service and CLI
 cloudflare-registry/     # Cloudflare Workers + D1 registry
 docs/requirements.md
 ```
 
-## Build The Registry
+## Build The Go Registry
 
 ```bash
-go build -o vpn-registry ./registry
+cd go-registry
+go build -o ../vpn-registry .
 ```
 
-## Start The Registry
+## Start The Go Registry
 
 First start creates `config.json` with one register token and two subscribe tokens:
 
@@ -158,13 +158,13 @@ For the registry service, expose the configured `listen` port behind your own HT
 On a Linux registry host with Go installed:
 
 ```bash
-bash install-registry.sh
+bash install-go-registry.sh
 ```
 
 Dry-run:
 
 ```bash
-bash install-registry.sh --dry-run
+bash install-go-registry.sh --dry-run
 ```
 
 Logs:

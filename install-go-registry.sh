@@ -58,9 +58,9 @@ ensure_linux_root() {
 main() {
   ensure_linux_root
   command -v go >/dev/null 2>&1 || fail "Go is required to build vpn-registry."
-  [[ -f registry/main.go ]] || fail "Run this script from the vpn-register-kit project root."
+  [[ -f go-registry/main.go ]] || fail "Run this script from the vpn-register-kit project root."
 
-  run_cmd go build -o vpn-registry ./registry
+  run_cmd go build -C go-registry -o ../vpn-registry .
   if ! id -u "$APP_USER" >/dev/null 2>&1; then
     run_cmd useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin "$APP_USER"
   fi

@@ -1,7 +1,8 @@
 .cache/
+.DS_Store
 node_modules/
 .wrangler/
-registry/config.json
-registry/nodes.json
+go-registry/config.json
+go-registry/nodes.json
 vpn-registry
 *.tmp
