@@ -6,6 +6,7 @@ Version 1 includes:
 
 - A shell node installer for Ubuntu/Debian servers.
 - A Go registry service for node registration and subscription rendering.
+- A Cloudflare Workers + D1 registry service with the same HTTP contract.
 - Registry CLI commands for token and node inspection.
 - Subscription formats for Shadowrocket, Clash/Mihomo, sing-box, and base64 link lists.
 
@@ -16,6 +17,7 @@ install-node.sh          # run on each VPN node server
 install-registry.sh      # optional registry systemd installer
 registry/main.go         # Go registry service and CLI
 registry/config.example.json
+cloudflare-registry/     # Cloudflare Workers + D1 registry
 docs/requirements.md
 ```
 
@@ -177,3 +179,9 @@ journalctl -u vpn-registry -f
 - `config.json` and `nodes.json` are written with `0600` permissions.
 - Logs do not print full tokens or protocol passwords.
 - Version 1 does not include a web dashboard, database, traffic stats, node groups, active health checks, or subscription expiry.
+
+## Cloudflare Registry
+
+The Cloudflare implementation lives in `cloudflare-registry/` and uses Workers + D1. It accepts the same `/register` payload as the Go registry, so `install-node.sh` can report to either backend by changing only the registry URL.
+
+See [cloudflare-registry/README.md](cloudflare-registry/README.md).

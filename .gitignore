@@ -1,4 +1,6 @@
 .cache/
+node_modules/
+.wrangler/
 registry/config.json
 registry/nodes.json
 vpn-registry

@@ -1,0 +1,10 @@
+name = "vpn-register-kit"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# Replace database_id after running:
+# wrangler d1 create vpn-register-kit
+[[d1_databases]]
+binding = "DB"
+database_name = "vpn-register-kit"
+database_id = "replace-with-d1-database-id"
