@@ -138,6 +138,20 @@ func TestRenderClashAndSingBox(t *testing.T) {
 	if !strings.Contains(clash, "proxies:") || !strings.Contains(clash, "proxy-groups:") || !strings.Contains(clash, "rules:") {
 		t.Fatalf("invalid clash output: %s", clash)
 	}
+	for _, want := range []string{
+		"rule-providers:",
+		"cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/direct.txt",
+		"cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/proxy.txt",
+		"  - RULE-SET,lancidr,DIRECT",
+		"  - RULE-SET,direct,DIRECT",
+		"  - RULE-SET,cncidr,DIRECT",
+		"  - RULE-SET,proxy,PROXY",
+		"  - MATCH,PROXY",
+	} {
+		if !strings.Contains(clash, want) {
+			t.Fatalf("clash output missing %q:\n%s", want, clash)
+		}
+	}
 
 	sb, ctype, err := renderSubscription("sing-box", nodes)
 	if err != nil {
@@ -149,6 +163,43 @@ func TestRenderClashAndSingBox(t *testing.T) {
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(sb), &parsed); err != nil {
 		t.Fatalf("sing-box output is not json: %v\n%s", err, sb)
+	}
+}
+
+func TestRenderShadowrocketConfig(t *testing.T) {
+	nodes := []Node{{
+		SchemaVersion: 1,
+		NodeID:        "hk01",
+		Name:          "HK-01",
+		Region:        "HK",
+		Host:          "hk01.example.com",
+		Protocols: []Protocol{
+			{Type: "trojan", Port: 443, Password: "trojan-pass", SNI: "hk01.example.com", TLS: true},
+			{Type: "shadowsocks", Port: 8080, Method: "aes-128-gcm", Password: "ss-pass"},
+		},
+	}}
+
+	conf, ctype, err := renderSubscription("shadowrocket-conf", nodes)
+	if err != nil {
+		t.Fatalf("render shadowrocket-conf: %v", err)
+	}
+	if ctype != "text/plain; charset=utf-8" {
+		t.Fatalf("shadowrocket-conf content type = %q", ctype)
+	}
+	for _, want := range []string{
+		"[Proxy]",
+		"HK-01-Trojan = trojan, hk01.example.com, 443, password=trojan-pass, over-tls=true, tls-verification=true, sni=hk01.example.com",
+		"HK-01-SS = ss, hk01.example.com, 8080, encrypt-method=aes-128-gcm, password=ss-pass",
+		"[Proxy Group]",
+		"PROXY = select, HK-01-Trojan, HK-01-SS, DIRECT",
+		"[Rule]",
+		"DOMAIN-SUFFIX,baidu.com,DIRECT",
+		"GEOIP,CN,DIRECT",
+		"FINAL,PROXY",
+	} {
+		if !strings.Contains(conf, want) {
+			t.Fatalf("shadowrocket-conf output missing %q:\n%s", want, conf)
+		}
 	}
 }
 

@@ -76,13 +76,39 @@ test("subscription supports clash and sing-box formats", async () => {
   const clash = await clashRes.text();
   assert.match(clash, /proxies:/);
   assert.match(clash, /proxy-groups:/);
+  assert.match(clash, /rule-providers:/);
+  assert.match(clash, /cdn\.jsdelivr\.net\/gh\/Loyalsoldier\/clash-rules@release\/direct\.txt/);
+  assert.match(clash, /RULE-SET,lancidr,DIRECT/);
+  assert.match(clash, /RULE-SET,direct,DIRECT/);
+  assert.match(clash, /RULE-SET,cncidr,DIRECT/);
+  assert.match(clash, /RULE-SET,proxy,PROXY/);
   assert.match(clash, /rules:/);
+  assert.match(clash, /MATCH,PROXY/);
 
   const singBoxRes = await worker.fetch(new Request(`https://sub.example.com/sub?token=${subscribeToken}&format=sing-box`), env);
   assert.equal(singBoxRes.status, 200);
   assert.equal(singBoxRes.headers.get("content-type"), "application/json; charset=utf-8");
   const singBox = await singBoxRes.json();
   assert.ok(Array.isArray(singBox.outbounds));
+});
+
+test("subscription supports shadowrocket config format with rules", async () => {
+  const { env, registerToken, subscribeToken } = await makeEnv();
+  await registerNode(env, registerToken);
+
+  const res = await worker.fetch(new Request(`https://sub.example.com/sub?token=${subscribeToken}&format=shadowrocket-conf`), env);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "text/plain; charset=utf-8");
+  const conf = await res.text();
+  assert.match(conf, /\[Proxy\]/);
+  assert.match(conf, /HK-01-Trojan = trojan, hk01\.example\.com, 443, password=trojan-pass, over-tls=true, tls-verification=true, sni=hk01\.example\.com/);
+  assert.match(conf, /HK-01-SS = ss, hk01\.example\.com, 8080, encrypt-method=aes-128-gcm, password=ss-pass/);
+  assert.match(conf, /\[Proxy Group\]/);
+  assert.match(conf, /PROXY = select, HK-01-Trojan, HK-01-SS, DIRECT/);
+  assert.match(conf, /\[Rule\]/);
+  assert.match(conf, /DOMAIN-SUFFIX,baidu\.com,DIRECT/);
+  assert.match(conf, /GEOIP,CN,DIRECT/);
+  assert.match(conf, /FINAL,PROXY/);
 });
 
 test("invalid subscribe token is rejected", async () => {

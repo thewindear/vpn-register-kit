@@ -18,6 +18,12 @@ export function renderSubscription(format, nodes) {
       contentType: "text/yaml; charset=utf-8"
     };
   }
+  if (["shadowrocket-conf", "shadowrocket-config", "sr-conf", "srconfig"].includes(normalized)) {
+    return {
+      body: renderShadowrocketConfig(nodes),
+      contentType: "text/plain; charset=utf-8"
+    };
+  }
   if (["sing-box", "singbox"].includes(normalized)) {
     return {
       body: JSON.stringify(renderSingBox(nodes), null, 2) + "\n",
@@ -94,9 +100,92 @@ export function renderClash(nodes) {
   lines.push("    proxies:");
   for (const name of proxyNames) lines.push(`      - ${yamlQuote(name)}`);
   lines.push("      - DIRECT");
+  lines.push("rule-providers:");
+  lines.push("  direct:");
+  lines.push("    type: http");
+  lines.push("    behavior: domain");
+  lines.push("    url: \"https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/direct.txt\"");
+  lines.push("    path: ./ruleset/direct.yaml");
+  lines.push("    interval: 86400");
+  lines.push("  proxy:");
+  lines.push("    type: http");
+  lines.push("    behavior: domain");
+  lines.push("    url: \"https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/proxy.txt\"");
+  lines.push("    path: ./ruleset/proxy.yaml");
+  lines.push("    interval: 86400");
+  lines.push("  cncidr:");
+  lines.push("    type: http");
+  lines.push("    behavior: ipcidr");
+  lines.push("    url: \"https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/cncidr.txt\"");
+  lines.push("    path: ./ruleset/cncidr.yaml");
+  lines.push("    interval: 86400");
+  lines.push("  lancidr:");
+  lines.push("    type: http");
+  lines.push("    behavior: ipcidr");
+  lines.push("    url: \"https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/lancidr.txt\"");
+  lines.push("    path: ./ruleset/lancidr.yaml");
+  lines.push("    interval: 86400");
   lines.push("rules:");
+  lines.push("  - RULE-SET,lancidr,DIRECT");
+  lines.push("  - RULE-SET,direct,DIRECT");
+  lines.push("  - RULE-SET,cncidr,DIRECT");
+  lines.push("  - RULE-SET,proxy,PROXY");
   lines.push("  - GEOIP,CN,DIRECT");
   lines.push("  - MATCH,PROXY");
+  return lines.join("\n") + "\n";
+}
+
+export function renderShadowrocketConfig(nodes) {
+  const proxyNames = [];
+  const lines = [
+    "[General]",
+    "bypass-system = true",
+    "skip-proxy = 127.0.0.1, 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, localhost, *.local",
+    "",
+    "[Proxy]"
+  ];
+  for (const node of nodes) {
+    for (const protocol of node.protocols || []) {
+      if (protocol.type === "trojan") {
+        const name = shadowrocketName(`${node.name}-Trojan`);
+        proxyNames.push(name);
+        lines.push(
+          `${name} = trojan, ${shadowrocketValue(node.host)}, ${protocol.port}, password=${shadowrocketValue(protocol.password)}, over-tls=true, tls-verification=true, sni=${shadowrocketValue(protocol.sni || node.host)}`
+        );
+      }
+      if (protocol.type === "shadowsocks") {
+        const name = shadowrocketName(`${node.name}-SS`);
+        proxyNames.push(name);
+        lines.push(
+          `${name} = ss, ${shadowrocketValue(node.host)}, ${protocol.port}, encrypt-method=${shadowrocketValue(protocol.method)}, password=${shadowrocketValue(protocol.password)}`
+        );
+      }
+    }
+  }
+  lines.push("");
+  lines.push("[Proxy Group]");
+  lines.push(`PROXY = select${proxyNames.map((name) => `, ${name}`).join("")}, DIRECT`);
+  lines.push("");
+  lines.push("[Rule]");
+  for (const suffix of [
+    "baidu.com",
+    "qq.com",
+    "taobao.com",
+    "tmall.com",
+    "alicdn.com",
+    "jd.com",
+    "163.com",
+    "bilibili.com",
+    "douyin.com",
+    "weixin.qq.com"
+  ]) {
+    lines.push(`DOMAIN-SUFFIX,${suffix},DIRECT`);
+  }
+  lines.push("IP-CIDR,192.168.0.0/16,DIRECT,no-resolve");
+  lines.push("IP-CIDR,10.0.0.0/8,DIRECT,no-resolve");
+  lines.push("IP-CIDR,172.16.0.0/12,DIRECT,no-resolve");
+  lines.push("GEOIP,CN,DIRECT");
+  lines.push("FINAL,PROXY");
   return lines.join("\n") + "\n";
 }
 
@@ -139,6 +228,14 @@ export function renderSingBox(nodes) {
 
 function yamlQuote(value) {
   return `"${String(value).replaceAll("\\", "\\\\").replaceAll("\"", "\\\"")}"`;
+}
+
+function shadowrocketName(value) {
+  return String(value).replaceAll(",", " ").replaceAll("\n", " ").replaceAll("\r", " ").trim();
+}
+
+function shadowrocketValue(value) {
+  return String(value ?? "").replaceAll(",", "%2C").replaceAll("\n", "").replaceAll("\r", "");
 }
 
 function base64Encode(value) {

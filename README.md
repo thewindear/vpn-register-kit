@@ -95,6 +95,7 @@ Subscription URLs:
 ```text
 https://sub.example.com/sub?token=SUB_TOKEN
 https://sub.example.com/sub?token=SUB_TOKEN&format=shadowrocket
+https://sub.example.com/sub?token=SUB_TOKEN&format=shadowrocket-conf
 https://sub.example.com/sub?token=SUB_TOKEN&format=base64
 https://sub.example.com/sub?token=SUB_TOKEN&format=clash
 https://sub.example.com/sub?token=SUB_TOKEN&format=sing-box
@@ -104,10 +105,13 @@ https://sub.example.com/sub?token=SUB_TOKEN&format=sing-box
 
 | Client | URL format |
 |---|---|
-| Shadowrocket | `/sub?token=SUB_TOKEN` |
+| Shadowrocket node subscription | `/sub?token=SUB_TOKEN` |
+| Shadowrocket config with rules | `/sub?token=SUB_TOKEN&format=shadowrocket-conf` |
 | v2rayN / v2rayNG | `/sub?token=SUB_TOKEN&format=base64` |
 | ClashX / Clash Verge / Mihomo Party / Stash | `/sub?token=SUB_TOKEN&format=clash` |
 | sing-box | `/sub?token=SUB_TOKEN&format=sing-box` |
+
+Clash/Mihomo subscriptions include remote rule providers for direct/proxy/CN/LAN rules and fall back to `MATCH,PROXY`. Shadowrocket config subscriptions include a local direct-rule set and fall back to `FINAL,PROXY`.
 
 ## Install A Node
 

@@ -125,6 +125,12 @@ Default Shadowrocket/common links:
 https://sub.example.com/sub?token=SUB_TOKEN
 ```
 
+Shadowrocket config with rules:
+
+```text
+https://sub.example.com/sub?token=SUB_TOKEN&format=shadowrocket-conf
+```
+
 Clash/Mihomo:
 
 ```text
