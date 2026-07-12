@@ -42,14 +42,23 @@ async function ensurePnpmInstall() {
 }
 
 async function ensureWranglerLogin() {
-  const result = spawnSync("pnpm", ["exec", "wrangler", "whoami"], { encoding: "utf8" });
-  if (result.status === 0) {
-    console.log(result.stdout.trim());
+  const result = runWranglerWhoami();
+  if (result.ok) {
+    if (result.output) console.log(result.output);
     return;
+  }
+  if (result.output) {
+    console.log(result.output);
   }
   const yes = await confirm("Wrangler is not logged in. Run wrangler login now?", true);
   if (!yes) throw new Error("Cloudflare login is required");
   run("pnpm", ["exec", "wrangler", "login"]);
+  const afterLogin = runWranglerWhoami();
+  if (!afterLogin.ok) {
+    if (afterLogin.output) console.log(afterLogin.output);
+    throw new Error("Wrangler still is not authenticated after login");
+  }
+  if (afterLogin.output) console.log(afterLogin.output);
 }
 
 async function ensureD1Database() {
@@ -208,6 +217,19 @@ function runCapture(command, args) {
     const stdout = error.stdout?.toString() || "";
     throw new Error(`${command} ${args.join(" ")} failed\n${stdout}${stderr}`);
   }
+}
+
+function runWranglerWhoami() {
+  const result = spawnSync("pnpm", ["exec", "wrangler", "whoami"], { encoding: "utf8" });
+  const outputText = `${result.stdout || ""}${result.stderr || ""}`.trim();
+  if (result.status === 0 && !isWranglerUnauthenticated(outputText)) {
+    return { ok: true, output: outputText };
+  }
+  return { ok: false, output: outputText };
+}
+
+function isWranglerUnauthenticated(outputText) {
+  return /not authenticated|wrangler login|you are not authenticated/i.test(outputText || "");
 }
 
 main();

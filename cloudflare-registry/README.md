@@ -46,6 +46,7 @@ pnpm setup:interactive
 The interactive script can:
 
 - check `wrangler login`
+- prompt and run `wrangler login` when Wrangler reports that you are not authenticated
 - create the D1 database
 - update `wrangler.toml` with `database_id`
 - generate and upload `ADMIN_TOKEN`
@@ -54,6 +55,8 @@ The interactive script can:
 - create initial register and subscribe tokens
 
 Manual setup is also supported:
+
+Wrangler v4 requires Node.js 22 or newer. If `wrangler` reports a Node version error, switch your shell to Node 22+ before running setup.
 
 Create D1:
 
