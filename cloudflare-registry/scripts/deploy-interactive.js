@@ -123,7 +123,7 @@ async function runMigrations() {
 async function deployWorker() {
   const yes = await confirm("Deploy Worker now?", true);
   if (!yes) return;
-  run("pnpm", ["deploy"]);
+  run("pnpm", ["exec", "wrangler", "deploy"]);
 }
 
 async function maybeCreateInitialTokens() {

@@ -81,7 +81,7 @@ wrangler secret put ADMIN_TOKEN
 Deploy:
 
 ```bash
-wrangler deploy
+pnpm cf:deploy
 ```
 
 ## Create Tokens
