@@ -38,9 +38,11 @@ File: `install-node.sh`
 - Safety:
   - Linux-only guard
   - `--dry-run` mode
+  - `--non-interactive` mode with explicit node parameters
   - backup existing configs before replacement
   - sensitive files mode `0600`
   - validate `node_id`, domain, and port range
+  - reuse existing protocol passwords from `/root/vpn-sub-kit/node.json` by default
 - Verification:
   - DNS check against current public IP
   - `nginx -t`

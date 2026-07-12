@@ -2,9 +2,19 @@
 set -Eeuo pipefail
 
 DRY_RUN=0
-if [[ "${1:-}" == "--dry-run" ]]; then
-  DRY_RUN=1
-fi
+NON_INTERACTIVE=0
+NODE_ID=""
+NODE_NAME=""
+REGION=""
+DOMAIN=""
+EMAIL=""
+TROJAN_PASSWORD=""
+ENABLE_SS=""
+SS_PORT=""
+SS_PASSWORD=""
+REGISTER_CHOICE=""
+REGISTRY_URL=""
+REGISTER_TOKEN=""
 
 WORK_DIR="/root/vpn-sub-kit"
 NGINX_SITE="/etc/nginx/sites-available/vpn-fallback.conf"
@@ -15,26 +25,69 @@ TROJAN_PORT="443"
 DEFAULT_SS_PORT="8080"
 SS_METHOD="aes-128-gcm"
 
-log() {
-  printf '[INFO] %s\n' "$*"
+usage() {
+  cat <<'EOF'
+Usage:
+  bash install-node.sh [options]
+
+Options:
+  --dry-run
+  --non-interactive
+  --node-id VALUE
+  --name VALUE
+  --region VALUE
+  --domain VALUE
+  --email VALUE
+  --trojan-password VALUE
+  --enable-ss
+  --disable-ss
+  --ss-port VALUE
+  --ss-password VALUE
+  --registry-url VALUE
+  --register-token VALUE
+  --no-register
+  -h, --help
+
+Required for non-interactive mode:
+  --node-id, --name, --region, --domain, --email
+
+Registration is enabled only when both --registry-url and --register-token are provided.
+EOF
 }
 
-warn() {
-  printf '[WARN] %s\n' "$*" >&2
-}
+log() { printf '[INFO] %s\n' "$*"; }
+warn() { printf '[WARN] %s\n' "$*" >&2; }
+fail() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
 
-fail() {
-  printf '[ERROR] %s\n' "$*" >&2
-  exit 1
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --non-interactive) NON_INTERACTIVE=1; shift ;;
+      --node-id) NODE_ID="${2:-}"; shift 2 ;;
+      --name) NODE_NAME="${2:-}"; shift 2 ;;
+      --region) REGION="${2:-}"; shift 2 ;;
+      --domain) DOMAIN="${2:-}"; shift 2 ;;
+      --email) EMAIL="${2:-}"; shift 2 ;;
+      --trojan-password) TROJAN_PASSWORD="${2:-}"; shift 2 ;;
+      --enable-ss) ENABLE_SS="y"; shift ;;
+      --disable-ss) ENABLE_SS="n"; shift ;;
+      --ss-port) SS_PORT="${2:-}"; shift 2 ;;
+      --ss-password) SS_PASSWORD="${2:-}"; shift 2 ;;
+      --registry-url) REGISTRY_URL="${2:-}"; REGISTER_CHOICE="y"; shift 2 ;;
+      --register-token) REGISTER_TOKEN="${2:-}"; REGISTER_CHOICE="y"; shift 2 ;;
+      --no-register) REGISTER_CHOICE="n"; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) fail "Unknown option: $1" ;;
+    esac
+  done
 }
 
 run_cmd() {
   if [[ "$DRY_RUN" == "1" ]]; then
     printf '[DRY-RUN] %q' "$1"
     shift || true
-    for arg in "$@"; do
-      printf ' %q' "$arg"
-    done
+    for arg in "$@"; do printf ' %q' "$arg"; done
     printf '\n'
     return 0
   fi
@@ -42,9 +95,7 @@ run_cmd() {
 }
 
 write_file() {
-  local path="$1"
-  local mode="$2"
-  local tmp
+  local path="$1" mode="$2" tmp
   tmp="$(mktemp)"
   cat >"$tmp"
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -67,9 +118,12 @@ backup_file() {
 }
 
 prompt() {
-  local label="$1"
-  local default="${2:-}"
-  local value
+  local label="$1" default="${2:-}" value
+  if [[ "$NON_INTERACTIVE" == "1" ]]; then
+    [[ -n "$default" ]] || fail "$label is required in --non-interactive mode"
+    printf '%s' "$default"
+    return 0
+  fi
   if [[ -n "$default" ]]; then
     read -r -p "$label [$default]: " value
     printf '%s' "${value:-$default}"
@@ -80,10 +134,13 @@ prompt() {
 }
 
 prompt_secret() {
-  local label="$1"
-  local default="$2"
-  local value
-  read -r -s -p "$label [auto-generate]: " value
+  local label="$1" default="$2" value
+  if [[ "$NON_INTERACTIVE" == "1" ]]; then
+    [[ -n "$default" ]] || fail "$label is required in --non-interactive mode"
+    printf '%s' "$default"
+    return 0
+  fi
+  read -r -s -p "$label [auto-generate/reuse]: " value
   printf '\n' >&2
   printf '%s' "${value:-$default}"
 }
@@ -96,36 +153,21 @@ random_secret() {
   fi
 }
 
-validate_node_id() {
-  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$ ]]
-}
-
-validate_host() {
-  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{1,252}[A-Za-z0-9]$ && "$1" == *.* ]]
-}
-
-validate_port() {
-  [[ "$1" =~ ^[0-9]+$ ]] && (( "$1" >= 1 && "$1" <= 65535 ))
-}
-
-normalize_url() {
-  local value="$1"
-  value="${value%/}"
-  printf '%s' "$value"
-}
+validate_node_id() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$ ]]; }
+validate_host() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{1,252}[A-Za-z0-9]$ && "$1" == *.* ]]; }
+validate_port() { [[ "$1" =~ ^[0-9]+$ ]] && (( "$1" >= 1 && "$1" <= 65535 )); }
+normalize_url() { local value="$1"; value="${value%/}"; printf '%s' "$value"; }
 
 ensure_linux_root() {
   [[ "$(uname -s)" == "Linux" ]] || fail "This installer is intended for Ubuntu/Debian Linux servers only."
   [[ "$(id -u)" == "0" ]] || fail "Please run as root."
-  if [[ ! -f /etc/debian_version ]]; then
-    fail "Only Debian/Ubuntu-like systems are supported in version 1."
-  fi
+  [[ -f /etc/debian_version ]] || fail "Only Debian/Ubuntu-like systems are supported in version 1."
 }
 
 install_dependencies() {
   log "installing dependencies"
   run_cmd apt-get update
-  run_cmd apt-get install -y curl jq nginx certbot python3-certbot-nginx ufw openssl ca-certificates
+  run_cmd apt-get install -y curl jq nginx certbot python3-certbot-nginx ufw openssl ca-certificates python3
   if ! command -v sing-box >/dev/null 2>&1; then
     warn "sing-box is not installed by apt on every distro; attempting official package install"
     run_cmd bash -c "curl -fsSL https://sing-box.app/deb-install.sh | bash"
@@ -133,26 +175,36 @@ install_dependencies() {
 }
 
 current_public_ip() {
-  if [[ "$DRY_RUN" == "1" ]]; then
-    printf ''
-    return 0
-  fi
+  if [[ "$DRY_RUN" == "1" ]]; then printf ''; return 0; fi
   curl -fsS --max-time 5 https://api.ipify.org || true
 }
 
 check_dns() {
-  local domain="$1"
-  local public_ip="$2"
-  local resolved
+  local domain="$1" public_ip="$2" resolved
   resolved="$(getent ahostsv4 "$domain" | awk '{print $1; exit}' || true)"
   if [[ -z "$resolved" ]]; then
     warn "could not resolve $domain before certificate request"
     return 0
   fi
   if [[ -n "$public_ip" && "$resolved" != "$public_ip" ]]; then
-    warn "$domain resolves to $resolved, current public IP appears to be $public_ip"
-    warn "Let's Encrypt may fail until DNS points at this server."
+    fail "$domain resolves to $resolved, current public IP appears to be $public_ip. Fix DNS first and make sure this node hostname is DNS-only/direct."
   fi
+}
+
+existing_protocol_value() {
+  local protocol="$1" field="$2" file="$WORK_DIR/node.json"
+  if [[ -f "$file" ]] && command -v jq >/dev/null 2>&1; then
+    jq -r --arg type "$protocol" --arg field "$field" '.protocols[]? | select(.type == $type) | .[$field] // empty' "$file" 2>/dev/null | head -n 1
+  fi
+}
+
+configure_firewall() {
+  local enable_ss="$1" ss_port="$2"
+  run_cmd ufw allow 22/tcp
+  run_cmd ufw allow 80/tcp
+  run_cmd ufw allow 443/tcp
+  if [[ "$enable_ss" == "y" ]]; then run_cmd ufw allow "$ss_port/tcp"; fi
+  run_cmd ufw --force enable
 }
 
 configure_nginx() {
@@ -206,8 +258,7 @@ EOF
 }
 
 obtain_certificate() {
-  local domain="$1"
-  local email="$2"
+  local domain="$1" email="$2"
   if [[ -f "/etc/letsencrypt/live/$domain/fullchain.pem" && -f "/etc/letsencrypt/live/$domain/privkey.pem" ]]; then
     log "certificate already exists for $domain"
     return 0
@@ -216,11 +267,7 @@ obtain_certificate() {
 }
 
 configure_sing_box() {
-  local domain="$1"
-  local trojan_password="$2"
-  local enable_ss="$3"
-  local ss_port="$4"
-  local ss_password="$5"
+  local domain="$1" trojan_password="$2" enable_ss="$3" ss_port="$4" ss_password="$5"
   backup_file "$SING_BOX_CONFIG"
   run_cmd mkdir -p /etc/sing-box
 
@@ -278,28 +325,12 @@ EOF
   run_cmd systemctl restart sing-box
 }
 
-configure_firewall() {
-  local enable_ss="$1"
-  local ss_port="$2"
-  run_cmd ufw allow 22/tcp
-  run_cmd ufw allow 80/tcp
-  run_cmd ufw allow 443/tcp
-  if [[ "$enable_ss" == "y" ]]; then
-    run_cmd ufw allow "$ss_port/tcp"
-  fi
-  run_cmd ufw --force enable
+url_quote() {
+  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$1"
 }
 
 write_outputs() {
-  local node_id="$1"
-  local name="$2"
-  local region="$3"
-  local domain="$4"
-  local public_ip="$5"
-  local trojan_password="$6"
-  local enable_ss="$7"
-  local ss_port="$8"
-  local ss_password="$9"
+  local node_id="$1" name="$2" region="$3" domain="$4" public_ip="$5" trojan_password="$6" enable_ss="$7" ss_port="$8" ss_password="$9"
   run_cmd mkdir -p "$WORK_DIR"
 
   local protocols_json
@@ -335,13 +366,12 @@ write_outputs() {
 }
 EOF
 
-  local trojan_link
-  trojan_link="trojan://$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$trojan_password")@$domain:443?security=tls&sni=$domain&peer=$domain#$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name-Trojan")"
-  local ss_link=""
+  local trojan_link ss_link=""
+  trojan_link="trojan://$(url_quote "$trojan_password")@$domain:443?security=tls&sni=$domain&peer=$domain#$(url_quote "$name-Trojan")"
   if [[ "$enable_ss" == "y" ]]; then
     local encoded
     encoded="$(printf '%s' "$SS_METHOD:$ss_password" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
-    ss_link="ss://$encoded@$domain:$ss_port#$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name-SS")"
+    ss_link="ss://$encoded@$domain:$ss_port#$(url_quote "$name-SS")"
   fi
   write_file "$WORK_DIR/shadowrocket.txt" "0600" <<EOF
 $trojan_link
@@ -401,8 +431,7 @@ EOF
 }
 
 register_node() {
-  local registry_url="$1"
-  local token="$2"
+  local registry_url="$1" token="$2"
   registry_url="$(normalize_url "$registry_url")"
   run_cmd curl -fsS -X POST "$registry_url/register" \
     -H "Authorization: Bearer $token" \
@@ -416,51 +445,67 @@ verify_services() {
   run_cmd ss -tulpen
 }
 
+require_value() {
+  local label="$1" value="$2"
+  [[ -n "$value" ]] || fail "$label is required"
+}
+
 main() {
+  parse_args "$@"
   ensure_linux_root
 
-  local node_id name region domain email trojan_password enable_ss ss_port ss_password register_choice registry_url register_token public_ip
-  node_id="$(prompt "Node ID" "$(hostname)")"
-  validate_node_id "$node_id" || fail "Invalid node_id. Use 2-64 chars: letters, numbers, dot, underscore, dash."
-  name="$(prompt "Node name" "$node_id")"
-  region="$(prompt "Region" "US")"
-  domain="$(prompt "Node domain")"
-  validate_host "$domain" || fail "Invalid domain."
-  email="$(prompt "Let's Encrypt email")"
-  [[ "$email" == *@* ]] || fail "Invalid email."
-  trojan_password="$(prompt_secret "Trojan password" "$(random_secret)")"
-  enable_ss="$(prompt "Enable Shadowsocks? y/N" "n")"
-  enable_ss="$(printf '%s' "$enable_ss" | tr '[:upper:]' '[:lower:]')"
-  if [[ "$enable_ss" == "y" ]]; then
-    ss_port="$(prompt "Shadowsocks port" "$DEFAULT_SS_PORT")"
-    validate_port "$ss_port" || fail "Invalid Shadowsocks port."
-    ss_password="$(prompt_secret "Shadowsocks password" "$(random_secret)")"
+  local existing_trojan existing_ss
+  existing_trojan="$(existing_protocol_value trojan password || true)"
+  existing_ss="$(existing_protocol_value shadowsocks password || true)"
+
+  NODE_ID="$(prompt "Node ID" "${NODE_ID:-$(hostname)}")"
+  validate_node_id "$NODE_ID" || fail "Invalid node_id. Use 2-64 chars: letters, numbers, dot, underscore, dash."
+  NODE_NAME="$(prompt "Node name" "${NODE_NAME:-$NODE_ID}")"
+  REGION="$(prompt "Region" "${REGION:-}")"
+  DOMAIN="$(prompt "Node domain" "${DOMAIN:-}")"
+  validate_host "$DOMAIN" || fail "Invalid domain."
+  EMAIL="$(prompt "Let's Encrypt email" "${EMAIL:-}")"
+  [[ "$EMAIL" == *@* ]] || fail "Invalid email."
+
+  TROJAN_PASSWORD="$(prompt_secret "Trojan password" "${TROJAN_PASSWORD:-${existing_trojan:-$(random_secret)}}")"
+  ENABLE_SS="$(prompt "Enable Shadowsocks? y/N" "${ENABLE_SS:-n}")"
+  ENABLE_SS="$(printf '%s' "$ENABLE_SS" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$ENABLE_SS" == "y" ]]; then
+    SS_PORT="$(prompt "Shadowsocks port" "${SS_PORT:-$DEFAULT_SS_PORT}")"
+    validate_port "$SS_PORT" || fail "Invalid Shadowsocks port."
+    SS_PASSWORD="$(prompt_secret "Shadowsocks password" "${SS_PASSWORD:-${existing_ss:-$(random_secret)}}")"
   else
-    ss_port="$DEFAULT_SS_PORT"
-    ss_password=""
-  fi
-  register_choice="$(prompt "Register to subscription service? y/N" "n")"
-  register_choice="$(printf '%s' "$register_choice" | tr '[:upper:]' '[:lower:]')"
-  if [[ "$register_choice" == "y" ]]; then
-    registry_url="$(prompt "Registry base URL, e.g. https://sub.example.com")"
-    register_token="$(prompt_secret "Register token" "")"
-    [[ -n "$registry_url" && -n "$register_token" ]] || fail "Registry URL and token are required when registration is enabled."
-  else
-    registry_url=""
-    register_token=""
+    SS_PORT="${SS_PORT:-$DEFAULT_SS_PORT}"
+    SS_PASSWORD=""
   fi
 
+  if [[ -n "$REGISTRY_URL" || -n "$REGISTER_TOKEN" ]]; then
+    REGISTER_CHOICE="y"
+  fi
+  REGISTER_CHOICE="$(prompt "Register to subscription service? y/N" "${REGISTER_CHOICE:-n}")"
+  REGISTER_CHOICE="$(printf '%s' "$REGISTER_CHOICE" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$REGISTER_CHOICE" == "y" ]]; then
+    REGISTRY_URL="$(prompt "Registry base URL, e.g. https://sub.example.com" "${REGISTRY_URL:-}")"
+    REGISTER_TOKEN="$(prompt_secret "Register token" "${REGISTER_TOKEN:-}")"
+    require_value "Registry URL" "$REGISTRY_URL"
+    require_value "Register token" "$REGISTER_TOKEN"
+  else
+    REGISTRY_URL=""
+    REGISTER_TOKEN=""
+  fi
+
+  local public_ip
   public_ip="$(current_public_ip)"
-  check_dns "$domain" "$public_ip"
+  check_dns "$DOMAIN" "$public_ip"
   install_dependencies
-  configure_nginx "$domain"
-  obtain_certificate "$domain" "$email"
-  configure_sing_box "$domain" "$trojan_password" "$enable_ss" "$ss_port" "$ss_password"
-  configure_firewall "$enable_ss" "$ss_port"
-  write_outputs "$node_id" "$name" "$region" "$domain" "$public_ip" "$trojan_password" "$enable_ss" "$ss_port" "$ss_password"
+  configure_firewall "$ENABLE_SS" "$SS_PORT"
+  configure_nginx "$DOMAIN"
+  obtain_certificate "$DOMAIN" "$EMAIL"
+  configure_sing_box "$DOMAIN" "$TROJAN_PASSWORD" "$ENABLE_SS" "$SS_PORT" "$SS_PASSWORD"
+  write_outputs "$NODE_ID" "$NODE_NAME" "$REGION" "$DOMAIN" "$public_ip" "$TROJAN_PASSWORD" "$ENABLE_SS" "$SS_PORT" "$SS_PASSWORD"
   verify_services
-  if [[ "$register_choice" == "y" ]]; then
-    register_node "$registry_url" "$register_token"
+  if [[ "$REGISTER_CHOICE" == "y" ]]; then
+    register_node "$REGISTRY_URL" "$REGISTER_TOKEN"
   fi
   log "done. Local outputs are in $WORK_DIR"
 }

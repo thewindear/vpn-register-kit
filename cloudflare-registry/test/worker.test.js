@@ -5,7 +5,9 @@ import worker from "../src/index.js";
 import { hashToken, tokenHint } from "../src/auth.js";
 import { MemoryD1 } from "./memory-d1.js";
 
-globalThis.crypto = webcrypto;
+if (!globalThis.crypto) {
+  Object.defineProperty(globalThis, "crypto", { value: webcrypto });
+}
 
 async function makeEnv() {
   const db = new MemoryD1();
