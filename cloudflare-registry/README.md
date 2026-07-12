@@ -37,6 +37,24 @@ Install dependencies if needed:
 pnpm install
 ```
 
+Interactive setup:
+
+```bash
+pnpm setup:interactive
+```
+
+The interactive script can:
+
+- check `wrangler login`
+- create the D1 database
+- update `wrangler.toml` with `database_id`
+- generate and upload `ADMIN_TOKEN`
+- apply migrations
+- deploy the Worker
+- create initial register and subscribe tokens
+
+Manual setup is also supported:
+
 Create D1:
 
 ```bash
