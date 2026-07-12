@@ -48,7 +48,7 @@ Copy the returned `database_id` into `wrangler.toml`.
 Apply migrations:
 
 ```bash
-wrangler d1 migrations apply VPN_REGISTRY_DB --remote
+wrangler d1 migrations apply DB --remote
 ```
 
 Set admin secret:
