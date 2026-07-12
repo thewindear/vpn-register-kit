@@ -146,7 +146,7 @@ bash install-node.sh \
   --register-token REGISTER_TOKEN
 ```
 
-The installer opens UFW ports before certificate issuance, so Let's Encrypt can reach `80/tcp`. If `/root/vpn-sub-kit/node.json` already exists, existing Trojan and Shadowsocks passwords are reused by default unless explicitly supplied.
+The installer opens UFW ports before certificate issuance, so Let's Encrypt can reach `80/tcp`. It also enables `certbot.timer` and installs a deploy hook that restarts `sing-box` and reloads `nginx` after successful certificate renewal. If `/root/vpn-sub-kit/node.json` already exists, existing Trojan and Shadowsocks passwords are reused by default unless explicitly supplied.
 
 Local outputs are written to:
 

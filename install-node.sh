@@ -20,6 +20,7 @@ WORK_DIR="/root/vpn-sub-kit"
 NGINX_SITE="/etc/nginx/sites-available/vpn-fallback.conf"
 NGINX_SITE_LINK="/etc/nginx/sites-enabled/vpn-fallback.conf"
 SING_BOX_CONFIG="/etc/sing-box/config.json"
+RENEWAL_HOOK="/etc/letsencrypt/renewal-hooks/deploy/reload-vpn-services"
 FALLBACK_PORT="8081"
 TROJAN_PORT="443"
 DEFAULT_SS_PORT="8080"
@@ -266,6 +267,19 @@ obtain_certificate() {
   run_cmd certbot certonly --webroot -w "/var/www/$domain" -d "$domain" --email "$email" --agree-tos --non-interactive
 }
 
+configure_certificate_renewal() {
+  run_cmd mkdir -p "$(dirname "$RENEWAL_HOOK")"
+  write_file "$RENEWAL_HOOK" "0755" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+systemctl restart sing-box
+systemctl reload nginx || systemctl restart nginx
+EOF
+  run_cmd systemctl enable certbot.timer
+  run_cmd systemctl start certbot.timer
+}
+
 configure_sing_box() {
   local domain="$1" trojan_password="$2" enable_ss="$3" ss_port="$4" ss_password="$5"
   backup_file "$SING_BOX_CONFIG"
@@ -501,6 +515,7 @@ main() {
   configure_firewall "$ENABLE_SS" "$SS_PORT"
   configure_nginx "$DOMAIN"
   obtain_certificate "$DOMAIN" "$EMAIL"
+  configure_certificate_renewal
   configure_sing_box "$DOMAIN" "$TROJAN_PASSWORD" "$ENABLE_SS" "$SS_PORT" "$SS_PASSWORD"
   write_outputs "$NODE_ID" "$NODE_NAME" "$REGION" "$DOMAIN" "$public_ip" "$TROJAN_PASSWORD" "$ENABLE_SS" "$SS_PORT" "$SS_PASSWORD"
   verify_services
