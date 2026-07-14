@@ -143,7 +143,7 @@ bash install-node.sh \
   --node-id sg01 \
   --name SG-01 \
   --region SG \
-  --domain sg01.005700.xyz \
+  --domain sg01.example.com \
   --email admin@example.com \
   --enable-ss \
   --registry-url https://sub.example.com \
