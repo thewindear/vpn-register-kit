@@ -167,23 +167,12 @@ export function renderShadowrocketConfig(nodes) {
   lines.push(`PROXY = select${proxyNames.map((name) => `, ${name}`).join("")}, DIRECT`);
   lines.push("");
   lines.push("[Rule]");
-  for (const suffix of [
-    "baidu.com",
-    "qq.com",
-    "taobao.com",
-    "tmall.com",
-    "alicdn.com",
-    "jd.com",
-    "163.com",
-    "bilibili.com",
-    "douyin.com",
-    "weixin.qq.com"
+  for (const ruleSetUrl of [
+    "https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Shadowrocket/Lan/Lan.list",
+    "https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Shadowrocket/China/China.list"
   ]) {
-    lines.push(`DOMAIN-SUFFIX,${suffix},DIRECT`);
+    lines.push(`RULE-SET,${ruleSetUrl},DIRECT`);
   }
-  lines.push("IP-CIDR,192.168.0.0/16,DIRECT,no-resolve");
-  lines.push("IP-CIDR,10.0.0.0/8,DIRECT,no-resolve");
-  lines.push("IP-CIDR,172.16.0.0/12,DIRECT,no-resolve");
   lines.push("GEOIP,CN,DIRECT");
   lines.push("FINAL,PROXY");
   return lines.join("\n") + "\n";

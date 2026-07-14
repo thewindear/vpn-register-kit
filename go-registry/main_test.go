@@ -193,7 +193,8 @@ func TestRenderShadowrocketConfig(t *testing.T) {
 		"[Proxy Group]",
 		"PROXY = select, HK-01-Trojan, HK-01-SS, DIRECT",
 		"[Rule]",
-		"DOMAIN-SUFFIX,baidu.com,DIRECT",
+		"RULE-SET,https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Shadowrocket/Lan/Lan.list,DIRECT",
+		"RULE-SET,https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Shadowrocket/China/China.list,DIRECT",
 		"GEOIP,CN,DIRECT",
 		"FINAL,PROXY",
 	} {

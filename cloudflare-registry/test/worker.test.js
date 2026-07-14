@@ -106,7 +106,8 @@ test("subscription supports shadowrocket config format with rules", async () => 
   assert.match(conf, /\[Proxy Group\]/);
   assert.match(conf, /PROXY = select, HK-01-Trojan, HK-01-SS, DIRECT/);
   assert.match(conf, /\[Rule\]/);
-  assert.match(conf, /DOMAIN-SUFFIX,baidu\.com,DIRECT/);
+  assert.match(conf, /RULE-SET,https:\/\/cdn\.jsdelivr\.net\/gh\/blackmatrix7\/ios_rule_script@master\/rule\/Shadowrocket\/Lan\/Lan\.list,DIRECT/);
+  assert.match(conf, /RULE-SET,https:\/\/cdn\.jsdelivr\.net\/gh\/blackmatrix7\/ios_rule_script@master\/rule\/Shadowrocket\/China\/China\.list,DIRECT/);
   assert.match(conf, /GEOIP,CN,DIRECT/);
   assert.match(conf, /FINAL,PROXY/);
 });

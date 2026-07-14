@@ -690,23 +690,12 @@ func renderShadowrocketConfig(nodes []Node) string {
 	b.WriteString(", DIRECT\n")
 	b.WriteString("\n")
 	b.WriteString("[Rule]\n")
-	for _, suffix := range []string{
-		"baidu.com",
-		"qq.com",
-		"taobao.com",
-		"tmall.com",
-		"alicdn.com",
-		"jd.com",
-		"163.com",
-		"bilibili.com",
-		"douyin.com",
-		"weixin.qq.com",
+	for _, ruleSetURL := range []string{
+		"https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Shadowrocket/Lan/Lan.list",
+		"https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Shadowrocket/China/China.list",
 	} {
-		fmt.Fprintf(&b, "DOMAIN-SUFFIX,%s,DIRECT\n", suffix)
+		fmt.Fprintf(&b, "RULE-SET,%s,DIRECT\n", ruleSetURL)
 	}
-	b.WriteString("IP-CIDR,192.168.0.0/16,DIRECT,no-resolve\n")
-	b.WriteString("IP-CIDR,10.0.0.0/8,DIRECT,no-resolve\n")
-	b.WriteString("IP-CIDR,172.16.0.0/12,DIRECT,no-resolve\n")
 	b.WriteString("GEOIP,CN,DIRECT\n")
 	b.WriteString("FINAL,PROXY\n")
 	return b.String()
