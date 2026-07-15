@@ -17,8 +17,11 @@ REGISTRY_URL=""
 REGISTER_TOKEN=""
 
 WORK_DIR="/root/vpn-sub-kit"
+SYSCTL_TUNING="/etc/sysctl.d/99-vpn-node-network-tuning.conf"
+NGINX_DEFAULT_SITE="/etc/nginx/sites-available/default"
 NGINX_SITE="/etc/nginx/sites-available/vpn-fallback.conf"
 NGINX_SITE_LINK="/etc/nginx/sites-enabled/vpn-fallback.conf"
+NGINX_SYSTEMD_LIMITS="/etc/systemd/system/nginx.service.d/limits.conf"
 SING_BOX_CONFIG="/etc/sing-box/config.json"
 RENEWAL_HOOK="/etc/letsencrypt/renewal-hooks/deploy/reload-vpn-services"
 FALLBACK_PORT="8081"
@@ -175,6 +178,104 @@ install_dependencies() {
   fi
 }
 
+patch_nginx_main_config() {
+  local nginx_conf="/etc/nginx/nginx.conf"
+  if [[ ! -f "$nginx_conf" ]]; then
+    warn "$nginx_conf does not exist; skipping nginx global tuning"
+    return 0
+  fi
+  backup_file "$nginx_conf"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "would tune $nginx_conf for high concurrency"
+    return 0
+  fi
+  python3 - <<'PY'
+from pathlib import Path
+import re
+
+path = Path("/etc/nginx/nginx.conf")
+text = path.read_text()
+
+if not re.search(r"^[ \t]*worker_rlimit_nofile\b", text, re.MULTILINE):
+    text = text.replace(
+        "pid /run/nginx.pid;\n",
+        "pid /run/nginx.pid;\nworker_rlimit_nofile 200000;\n",
+        1,
+    )
+
+text = re.sub(r"worker_connections\s+\d+;", "worker_connections 8192;", text, count=1)
+text = text.replace("# multi_accept on;", "multi_accept on;")
+
+if not re.search(r"^[ \t]*use\s+epoll;", text, re.MULTILINE):
+    text = text.replace("events {\n", "events {\n\tuse epoll;\n", 1)
+
+has_keepalive_timeout = re.search(r"^[ \t]*keepalive_timeout\b.*$", text, re.MULTILINE)
+has_keepalive_requests = re.search(r"^[ \t]*keepalive_requests\b", text, re.MULTILINE)
+if not has_keepalive_timeout:
+    text = text.replace(
+        "\t# Basic Settings\n\t##\n",
+        "\t# Basic Settings\n\t##\n\tkeepalive_timeout 15;\n\tkeepalive_requests 1000;\n",
+        1,
+    )
+elif not has_keepalive_requests:
+    text = text.replace(
+        has_keepalive_timeout.group(0) + "\n",
+        has_keepalive_timeout.group(0) + "\n\tkeepalive_requests 1000;\n",
+        1,
+    )
+
+path.write_text(text)
+PY
+}
+
+patch_nginx_default_site() {
+  if [[ ! -f "$NGINX_DEFAULT_SITE" ]]; then
+    return 0
+  fi
+  backup_file "$NGINX_DEFAULT_SITE"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "would tune $NGINX_DEFAULT_SITE listen backlog"
+    return 0
+  fi
+  python3 - <<'PY'
+from pathlib import Path
+
+path = Path("/etc/nginx/sites-available/default")
+text = path.read_text()
+text = text.replace("listen 80 default_server;", "listen 80 default_server backlog=65535;")
+text = text.replace("listen [::]:80 default_server;", "listen [::]:80 default_server backlog=65535;")
+path.write_text(text)
+PY
+}
+
+configure_linux_network_tuning() {
+  log "configuring Linux TCP and nginx concurrency tuning"
+  backup_file "$SYSCTL_TUNING"
+  write_file "$SYSCTL_TUNING" "0644" <<'EOF'
+# Increase TCP accept queues and connection churn capacity for HTTP/TCP services.
+net.core.somaxconn = 65535
+net.ipv4.tcp_max_syn_backlog = 65535
+net.ipv4.tcp_synack_retries = 3
+net.ipv4.ip_local_port_range = 10000 65000
+net.ipv4.tcp_fin_timeout = 15
+net.ipv4.tcp_max_tw_buckets = 2000000
+net.ipv4.tcp_tw_reuse = 2
+net.ipv4.tcp_fastopen = 3
+EOF
+
+  backup_file "$NGINX_SYSTEMD_LIMITS"
+  write_file "$NGINX_SYSTEMD_LIMITS" "0644" <<'EOF'
+[Service]
+LimitNOFILE=524288
+TasksMax=infinity
+EOF
+
+  patch_nginx_main_config
+  patch_nginx_default_site
+  run_cmd sysctl --system
+  run_cmd systemctl daemon-reload
+}
+
 current_public_ip() {
   if [[ "$DRY_RUN" == "1" ]]; then printf ''; return 0; fi
   curl -fsS --max-time 5 https://api.ipify.org || true
@@ -213,8 +314,8 @@ configure_nginx() {
   backup_file "$NGINX_SITE"
   write_file "$NGINX_SITE" "0644" <<EOF
 server {
-    listen 80;
-    listen [::]:80;
+    listen 80 backlog=65535;
+    listen [::]:80 backlog=65535;
     server_name $domain;
 
     root /var/www/$domain;
@@ -226,7 +327,7 @@ server {
 }
 
 server {
-    listen 127.0.0.1:$FALLBACK_PORT;
+    listen 127.0.0.1:$FALLBACK_PORT backlog=65535;
     server_name $domain;
 
     root /var/www/$domain;
@@ -512,6 +613,7 @@ main() {
   public_ip="$(current_public_ip)"
   check_dns "$DOMAIN" "$public_ip"
   install_dependencies
+  configure_linux_network_tuning
   configure_firewall "$ENABLE_SS" "$SS_PORT"
   configure_nginx "$DOMAIN"
   obtain_certificate "$DOMAIN" "$EMAIL"

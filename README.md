@@ -152,6 +152,8 @@ bash install-node.sh \
 
 The installer opens UFW ports before certificate issuance, so Let's Encrypt can reach `80/tcp`. It also enables `certbot.timer` and installs a deploy hook that restarts `sing-box` and reloads `nginx` after successful certificate renewal. If `/root/vpn-sub-kit/node.json` already exists, existing Trojan and Shadowsocks passwords are reused by default unless explicitly supplied.
 
+The installer also applies persistent Linux/nginx concurrency tuning for node traffic: larger TCP accept queues, a wider ephemeral port range, shorter TCP FIN timeout, higher TIME_WAIT capacity, nginx worker file descriptor limits, and `backlog=65535` on nginx fallback listeners.
+
 Local outputs are written to:
 
 ```text
