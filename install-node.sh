@@ -23,6 +23,7 @@ NGINX_SITE="/etc/nginx/sites-available/vpn-fallback.conf"
 NGINX_SITE_LINK="/etc/nginx/sites-enabled/vpn-fallback.conf"
 NGINX_SYSTEMD_LIMITS="/etc/systemd/system/nginx.service.d/limits.conf"
 SING_BOX_CONFIG="/etc/sing-box/config.json"
+SING_BOX_SYSTEMD_LIMITS="/etc/systemd/system/sing-box.service.d/limits.conf"
 RENEWAL_HOOK="/etc/letsencrypt/renewal-hooks/deploy/reload-vpn-services"
 FALLBACK_PORT="8081"
 TROJAN_PORT="443"
@@ -381,10 +382,21 @@ EOF
   run_cmd systemctl start certbot.timer
 }
 
+configure_sing_box_systemd_limits() {
+  backup_file "$SING_BOX_SYSTEMD_LIMITS"
+  write_file "$SING_BOX_SYSTEMD_LIMITS" "0644" <<'EOF'
+[Service]
+LimitNOFILE=infinity
+TasksMax=infinity
+EOF
+  run_cmd systemctl daemon-reload
+}
+
 configure_sing_box() {
   local domain="$1" trojan_password="$2" enable_ss="$3" ss_port="$4" ss_password="$5"
   backup_file "$SING_BOX_CONFIG"
   run_cmd mkdir -p /etc/sing-box
+  configure_sing_box_systemd_limits
 
   local ss_block=""
   if [[ "$enable_ss" == "y" ]]; then
@@ -394,6 +406,8 @@ configure_sing_box() {
       \"listen\": \"::\",
       \"listen_port\": $ss_port,
       \"network\": \"tcp\",
+      \"tcp_fast_open\": true,
+      \"tcp_multi_path\": true,
       \"method\": \"$SS_METHOD\",
       \"password\": \"$ss_password\"
     }"
@@ -402,7 +416,7 @@ configure_sing_box() {
   write_file "$SING_BOX_CONFIG" "0600" <<EOF
 {
   "log": {
-    "level": "info"
+    "level": "warn"
   },
   "inbounds": [
     {
@@ -410,6 +424,8 @@ configure_sing_box() {
       "tag": "trojan-in",
       "listen": "::",
       "listen_port": $TROJAN_PORT,
+      "tcp_fast_open": true,
+      "tcp_multi_path": true,
       "users": [
         {
           "password": "$trojan_password"
@@ -430,7 +446,10 @@ configure_sing_box() {
   "outbounds": [
     {
       "type": "direct",
-      "tag": "direct"
+      "tag": "direct",
+      "tcp_fast_open": true,
+      "tcp_multi_path": true,
+      "connect_timeout": "10s"
     }
   ]
 }

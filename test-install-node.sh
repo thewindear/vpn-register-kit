@@ -36,6 +36,12 @@ require_contains "keepalive_requests 1000;"
 require_contains "listen 80 backlog=65535;"
 require_contains "listen [::]:80 backlog=65535;"
 require_contains 'listen 127.0.0.1:$FALLBACK_PORT backlog=65535;'
+require_contains "/etc/systemd/system/sing-box.service.d/limits.conf"
+require_contains "configure_sing_box_systemd_limits"
+require_contains '"level": "warn"'
+require_contains '"tcp_fast_open": true'
+require_contains '"tcp_multi_path": true'
+require_contains '"connect_timeout": "10s"'
 
 printf 'install-node renewal assertions passed
 '
