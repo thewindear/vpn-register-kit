@@ -13,6 +13,15 @@ require_contains() {
   fi
 }
 
+require_not_contains() {
+  local needle="$1"
+  if grep -Fq "$needle" <<<"$SCRIPT"; then
+    printf 'Expected install-node.sh not to contain: %s
+' "$needle" >&2
+    exit 1
+  fi
+}
+
 require_contains "/etc/letsencrypt/renewal-hooks/deploy/reload-vpn-services"
 require_contains "systemctl enable certbot.timer"
 require_contains "systemctl restart sing-box"
@@ -33,9 +42,10 @@ require_contains "multi_accept on;"
 require_contains "use epoll;"
 require_contains "keepalive_timeout 15;"
 require_contains "keepalive_requests 1000;"
-require_contains "listen 80 backlog=65535;"
-require_contains "listen [::]:80 backlog=65535;"
-require_contains 'listen 127.0.0.1:$FALLBACK_PORT backlog=65535;'
+require_contains "listen 80;"
+require_contains "listen [::]:80;"
+require_contains 'listen 127.0.0.1:$FALLBACK_PORT;'
+require_not_contains "backlog=65535"
 require_contains "/etc/systemd/system/sing-box.service.d/limits.conf"
 require_contains "configure_sing_box_systemd_limits"
 require_contains '"level": "warn"'

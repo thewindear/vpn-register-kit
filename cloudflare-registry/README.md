@@ -117,6 +117,12 @@ List nodes:
 pnpm cf:node:list
 ```
 
+Delete a node:
+
+```bash
+pnpm cf:node:delete -- --id us-la-001
+```
+
 ## Client Subscription URLs
 
 Default Shadowrocket/common links:

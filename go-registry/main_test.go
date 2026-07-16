@@ -97,6 +97,61 @@ func TestRegisterAndSubscribeShadowrocket(t *testing.T) {
 	}
 }
 
+func TestDeleteNodeRemovesItFromSubscriptions(t *testing.T) {
+	dir := t.TempDir()
+	cfg := Config{
+		Listen:          ":0",
+		RegisterTokens:  []string{"reg-token"},
+		SubscribeTokens: []string{"sub-token"},
+		DataFile:        filepath.Join(dir, "nodes.json"),
+	}
+	srv := newRegistryServer(cfg)
+
+	body := `{
+		"schema_version": 1,
+		"node_id": "hk01",
+		"name": "HK-01",
+		"region": "HK",
+		"host": "hk01.example.com",
+		"protocols": [
+			{"type":"trojan","port":443,"password":"trojan-pass","sni":"hk01.example.com","tls":true}
+		]
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer reg-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("register status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/nodes/hk01", nil)
+	req.Header.Set("Authorization", "Bearer reg-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/sub?token=sub-token", nil)
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sub status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "hk01.example.com") {
+		t.Fatalf("subscription still contains deleted node: %s", rec.Body.String())
+	}
+
+	nodes, err := loadNodes(cfg.DataFile)
+	if err != nil {
+		t.Fatalf("load nodes: %v", err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("stored node count = %d, want 0", len(nodes))
+	}
+}
+
 func TestSubscribeRejectsInvalidToken(t *testing.T) {
 	dir := t.TempDir()
 	cfg := Config{
@@ -242,5 +297,42 @@ func TestTokenCreateAndDelete(t *testing.T) {
 	}
 	if len(loaded.SubscribeTokens) != 1 {
 		t.Fatalf("subscribe token count after delete = %d, want 1", len(loaded.SubscribeTokens))
+	}
+}
+
+func TestNodeDeleteCommand(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	dataPath := filepath.Join(dir, "nodes.json")
+	cfg := Config{
+		Listen:          ":8088",
+		PublicBaseURL:   "https://sub.example.com",
+		RegisterTokens:  []string{"reg-token"},
+		SubscribeTokens: []string{"sub-token"},
+		DataFile:        dataPath,
+	}
+	if err := saveConfigAtomic(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if err := saveNodes(dataPath, []Node{{
+		SchemaVersion: 1,
+		NodeID:        "hk01",
+		Name:          "HK-01",
+		Region:        "HK",
+		Host:          "hk01.example.com",
+		Protocols:     []Protocol{{Type: "trojan", Port: 443, Password: "tp", SNI: "hk01.example.com", TLS: true}},
+	}}); err != nil {
+		t.Fatalf("save nodes: %v", err)
+	}
+
+	if err := commandNode([]string{"delete", "-config", configPath, "-id", "hk01"}); err != nil {
+		t.Fatalf("node delete: %v", err)
+	}
+	nodes, err := loadNodes(dataPath)
+	if err != nil {
+		t.Fatalf("load nodes: %v", err)
+	}
+	if len(nodes) != 0 {
+		t.Fatalf("node count after delete = %d, want 0", len(nodes))
 	}
 }

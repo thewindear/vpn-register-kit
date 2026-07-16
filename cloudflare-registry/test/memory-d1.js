@@ -60,6 +60,11 @@ class MemoryStatement {
       });
       return { success: true };
     }
+    if (sql.startsWith("DELETE FROM nodes WHERE node_id")) {
+      const [nodeId] = this.params;
+      this.db.nodes.delete(nodeId);
+      return { success: true };
+    }
     if (sql.startsWith("INSERT INTO audit_logs")) {
       const [id, eventType, remoteIp, userAgent, tokenHint, nodeId, format, status, createdAt] = this.params;
       this.db.auditLogs.push({ id, event_type: eventType, remote_ip: remoteIp, user_agent: userAgent, token_hint: tokenHint, node_id: nodeId, format, status, created_at: createdAt });
@@ -79,6 +84,11 @@ class MemoryStatement {
     }
     if (sql.startsWith("SELECT * FROM nodes ORDER BY node_id")) {
       return [...this.db.nodes.values()].sort((a, b) => a.node_id.localeCompare(b.node_id));
+    }
+    if (sql.startsWith("SELECT * FROM nodes WHERE node_id")) {
+      const [nodeId] = this.params;
+      const node = this.db.nodes.get(nodeId);
+      return node ? [node] : [];
     }
     throw new Error(`unsupported query SQL: ${sql}`);
   }

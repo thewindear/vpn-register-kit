@@ -39,4 +39,5 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, "  vpn-registry token delete -config ./config.json -token xxx")
 	fmt.Fprintln(w, "  vpn-registry node list -config ./config.json")
 	fmt.Fprintln(w, "  vpn-registry node show -config ./config.json -id us-la-001")
+	fmt.Fprintln(w, "  vpn-registry node delete -config ./config.json -id us-la-001")
 }

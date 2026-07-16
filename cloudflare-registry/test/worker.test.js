@@ -159,3 +159,26 @@ test("api nodes returns summaries without protocol passwords", async () => {
   ]);
   assert.equal(JSON.stringify(body).includes("trojan-pass"), false);
 });
+
+test("admin can delete node and remove it from subscriptions", async () => {
+  const { env, registerToken, subscribeToken } = await makeEnv();
+  await registerNode(env, registerToken);
+
+  const deleteRes = await worker.fetch(new Request("https://sub.example.com/admin/nodes/hk01", {
+    method: "DELETE",
+    headers: { Authorization: "Bearer admin-test-token" }
+  }), env);
+  assert.equal(deleteRes.status, 200);
+
+  const listRes = await worker.fetch(new Request("https://sub.example.com/admin/nodes", {
+    headers: { Authorization: "Bearer admin-test-token" }
+  }), env);
+  assert.equal(listRes.status, 200);
+  const list = await listRes.json();
+  assert.equal(list.nodes.length, 0);
+
+  const subRes = await worker.fetch(new Request(`https://sub.example.com/sub?token=${subscribeToken}`), env);
+  assert.equal(subRes.status, 200);
+  const body = await subRes.text();
+  assert.equal(body.includes("hk01.example.com"), false);
+});

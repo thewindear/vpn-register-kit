@@ -57,6 +57,13 @@ export async function listNodes(db) {
   return (result.results || []).map(rowToNode);
 }
 
+export async function deleteNode(db, nodeId) {
+  const existing = await db.prepare("SELECT * FROM nodes WHERE node_id = ?").bind(nodeId).first();
+  if (!existing) return false;
+  await db.prepare("DELETE FROM nodes WHERE node_id = ?").bind(nodeId).run();
+  return true;
+}
+
 export function rowToNode(row) {
   return {
     schema_version: row.schema_version,

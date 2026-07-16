@@ -110,6 +110,17 @@ func commandNode(args []string) error {
 			return err
 		}
 		return runNodeShow(nodes, *id, os.Stdout)
+	case "delete":
+		fs := flag.NewFlagSet("node delete", flag.ContinueOnError)
+		configPath := fs.String("config", defaultConfigPath, "config file path")
+		id := fs.String("id", "", "node id")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *id == "" {
+			return errors.New("-id is required")
+		}
+		return runNodeDelete(*configPath, *id)
 	default:
 		return fmt.Errorf("unknown node subcommand %q", args[0])
 	}
@@ -203,6 +214,30 @@ func runNodeShow(nodes []Node, id string, w io.Writer) error {
 		return nil
 	}
 	return errors.New("node not found")
+}
+
+func runNodeDelete(configPath string, id string) error {
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		return err
+	}
+	nodes, err := loadNodes(cfg.DataFile)
+	if err != nil {
+		return err
+	}
+	next := nodes[:0]
+	found := false
+	for _, node := range nodes {
+		if node.NodeID == id {
+			found = true
+			continue
+		}
+		next = append(next, node)
+	}
+	if !found {
+		return errors.New("node not found")
+	}
+	return saveNodes(cfg.DataFile, next)
 }
 
 func printGeneratedConfig(w io.Writer, cfg Config) {

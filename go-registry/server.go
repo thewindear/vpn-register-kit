@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -24,6 +25,7 @@ func newRegistryServer(cfg Config) http.Handler {
 	mux.HandleFunc("/register", s.handleRegister)
 	mux.HandleFunc("/sub", s.handleSub)
 	mux.HandleFunc("/api/nodes", s.handleAPINodes)
+	mux.HandleFunc("/api/nodes/", s.handleAPINode)
 	return mux
 }
 
@@ -156,4 +158,47 @@ func (s *registryServer) handleAPINodes(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(out)
 	log.Printf("[INFO] api nodes request remote_ip=%s token=%s status=200 nodes=%d", remote, tokenHint(token), len(nodes))
+}
+
+func (s *registryServer) handleAPINode(w http.ResponseWriter, r *http.Request) {
+	remote := remoteIP(r)
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	token := bearerToken(r.Header.Get("Authorization"))
+	if !contains(s.cfg.RegisterTokens, token) {
+		log.Printf("[WARN] api node delete denied remote_ip=%s token=%s reason=invalid_token", remote, tokenHint(token))
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	nodeID, err := url.PathUnescape(strings.TrimPrefix(r.URL.Path, "/api/nodes/"))
+	if err != nil {
+		http.Error(w, "invalid node_id", http.StatusBadRequest)
+		return
+	}
+	if !nodeIDPattern.MatchString(nodeID) {
+		http.Error(w, "invalid node_id", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	if _, ok := s.store[nodeID]; !ok {
+		s.mu.Unlock()
+		http.Error(w, "node not found", http.StatusNotFound)
+		return
+	}
+	delete(s.store, nodeID)
+	nodes := s.sortedNodesLocked()
+	err = saveNodes(s.cfg.DataFile, nodes)
+	s.mu.Unlock()
+	if err != nil {
+		log.Printf("[ERROR] save nodes after delete failed error=%q", err)
+		http.Error(w, "save failed", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[INFO] node deleted remote_ip=%s node_id=%s", remote, nodeID)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = io.WriteString(w, `{"status":"ok"}`+"\n")
 }

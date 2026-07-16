@@ -62,6 +62,7 @@ Set `public_base_url` to your public registry URL, for example:
 
 ./vpn-registry node list -config ./config.json
 ./vpn-registry node show -config ./config.json -id us-la-001
+./vpn-registry node delete -config ./config.json -id us-la-001
 ```
 
 `token create` prints the full new subscribe token once. Other commands mask tokens and protocol passwords.
@@ -87,6 +88,13 @@ List registered node summaries:
 
 ```bash
 curl https://sub.example.com/api/nodes \
+  -H "Authorization: Bearer REGISTER_TOKEN"
+```
+
+Remove a node from subscriptions:
+
+```bash
+curl -X DELETE https://sub.example.com/api/nodes/us-la-001 \
   -H "Authorization: Bearer REGISTER_TOKEN"
 ```
 
@@ -152,7 +160,7 @@ bash install-node.sh \
 
 The installer opens UFW ports before certificate issuance, so Let's Encrypt can reach `80/tcp`. It also enables `certbot.timer` and installs a deploy hook that restarts `sing-box` and reloads `nginx` after successful certificate renewal. If `/root/vpn-sub-kit/node.json` already exists, existing Trojan and Shadowsocks passwords are reused by default unless explicitly supplied.
 
-The installer also applies persistent Linux/nginx/sing-box concurrency tuning for node traffic: larger TCP accept queues, a wider ephemeral port range, shorter TCP FIN timeout, higher TIME_WAIT capacity, nginx worker file descriptor limits, `backlog=65535` on nginx fallback listeners, sing-box TCP Fast Open/MPTCP options, lower-volume sing-box warning logs, direct outbound connection timeout, and sing-box systemd task/file limits.
+The installer also applies persistent Linux/nginx/sing-box concurrency tuning for node traffic: larger TCP accept queues, a wider ephemeral port range, shorter TCP FIN timeout, higher TIME_WAIT capacity, nginx worker file descriptor limits, sing-box TCP Fast Open/MPTCP options, lower-volume sing-box warning logs, direct outbound connection timeout, and sing-box systemd task/file limits.
 
 Local outputs are written to:
 

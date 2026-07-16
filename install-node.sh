@@ -18,7 +18,6 @@ REGISTER_TOKEN=""
 
 WORK_DIR="/root/vpn-sub-kit"
 SYSCTL_TUNING="/etc/sysctl.d/99-vpn-node-network-tuning.conf"
-NGINX_DEFAULT_SITE="/etc/nginx/sites-available/default"
 NGINX_SITE="/etc/nginx/sites-available/vpn-fallback.conf"
 NGINX_SITE_LINK="/etc/nginx/sites-enabled/vpn-fallback.conf"
 NGINX_SYSTEMD_LIMITS="/etc/systemd/system/nginx.service.d/limits.conf"
@@ -229,26 +228,6 @@ path.write_text(text)
 PY
 }
 
-patch_nginx_default_site() {
-  if [[ ! -f "$NGINX_DEFAULT_SITE" ]]; then
-    return 0
-  fi
-  backup_file "$NGINX_DEFAULT_SITE"
-  if [[ "$DRY_RUN" == "1" ]]; then
-    log "would tune $NGINX_DEFAULT_SITE listen backlog"
-    return 0
-  fi
-  python3 - <<'PY'
-from pathlib import Path
-
-path = Path("/etc/nginx/sites-available/default")
-text = path.read_text()
-text = text.replace("listen 80 default_server;", "listen 80 default_server backlog=65535;")
-text = text.replace("listen [::]:80 default_server;", "listen [::]:80 default_server backlog=65535;")
-path.write_text(text)
-PY
-}
-
 configure_linux_network_tuning() {
   log "configuring Linux TCP and nginx concurrency tuning"
   backup_file "$SYSCTL_TUNING"
@@ -272,7 +251,6 @@ TasksMax=infinity
 EOF
 
   patch_nginx_main_config
-  patch_nginx_default_site
   run_cmd sysctl --system
   run_cmd systemctl daemon-reload
 }
@@ -315,8 +293,8 @@ configure_nginx() {
   backup_file "$NGINX_SITE"
   write_file "$NGINX_SITE" "0644" <<EOF
 server {
-    listen 80 backlog=65535;
-    listen [::]:80 backlog=65535;
+    listen 80;
+    listen [::]:80;
     server_name $domain;
 
     root /var/www/$domain;
@@ -328,7 +306,7 @@ server {
 }
 
 server {
-    listen 127.0.0.1:$FALLBACK_PORT backlog=65535;
+    listen 127.0.0.1:$FALLBACK_PORT;
     server_name $domain;
 
     root /var/www/$domain;

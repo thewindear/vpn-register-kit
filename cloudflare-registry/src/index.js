@@ -1,5 +1,5 @@
 import { bearerToken, hashToken, randomToken, requireAdmin, tokenHint } from "./auth.js";
-import { findEnabledToken, insertToken, listNodes, listTokens, upsertNode, writeAudit } from "./db.js";
+import { deleteNode, findEnabledToken, insertToken, listNodes, listTokens, upsertNode, writeAudit } from "./db.js";
 import { logInfo, logWarn, requestMeta } from "./logs.js";
 import { renderSubscription } from "./renderers.js";
 import { validateNode } from "./validators.js";
@@ -25,9 +25,11 @@ async function route(request, env) {
   if (url.pathname === "/register") return handleRegister(request, env);
   if (url.pathname === "/sub") return handleSub(request, env);
   if (url.pathname === "/api/nodes") return handleApiNodes(request, env);
+  if (url.pathname.startsWith("/api/nodes/")) return handleApiNode(request, env);
   if (url.pathname === "/admin/tokens/create") return handleAdminTokenCreate(request, env);
   if (url.pathname === "/admin/tokens") return handleAdminTokens(request, env);
   if (url.pathname === "/admin/nodes") return handleAdminNodes(request, env);
+  if (url.pathname.startsWith("/admin/nodes/")) return handleAdminNode(request, env);
   return text("not found", 404);
 }
 
@@ -96,6 +98,36 @@ async function handleAdminNodes(request, env) {
   if (!requireAdmin(request, env)) return text("unauthorized", 401);
   const nodes = await listNodes(env.DB);
   return json({ nodes: nodes.map(nodeSummary) });
+}
+
+async function handleApiNode(request, env) {
+  if (request.method !== "DELETE") return text("method not allowed", 405);
+  const token = bearerToken(request);
+  const registerToken = await findEnabledToken(env.DB, "register", token);
+  const isAdmin = requireAdmin(request, env);
+  if (!registerToken && !isAdmin) return text("unauthorized", 401);
+  return deleteNodeFromPath(request, env, "/api/nodes/");
+}
+
+async function handleAdminNode(request, env) {
+  if (request.method !== "DELETE") return text("method not allowed", 405);
+  if (!requireAdmin(request, env)) return text("unauthorized", 401);
+  return deleteNodeFromPath(request, env, "/admin/nodes/");
+}
+
+async function deleteNodeFromPath(request, env, prefix) {
+  const url = new URL(request.url);
+  const nodeId = decodeURIComponent(url.pathname.slice(prefix.length));
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$/.test(nodeId)) return text("invalid node_id", 400);
+  const deleted = await deleteNode(env.DB, nodeId);
+  const meta = requestMeta(request);
+  if (!deleted) {
+    await writeAudit(env.DB, { event_type: "node_delete_missing", ...meta, node_id: nodeId, status: 404 });
+    return text("node not found", 404);
+  }
+  await writeAudit(env.DB, { event_type: "node_delete", ...meta, node_id: nodeId, status: 200 });
+  logInfo("node deleted", { remote_ip: meta.remote_ip, node_id: nodeId });
+  return json({ status: "ok" });
 }
 
 async function handleAdminTokens(request, env) {
