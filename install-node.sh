@@ -10,6 +10,7 @@ DOMAIN=""
 EMAIL=""
 TROJAN_PASSWORD=""
 ENABLE_SS=""
+ENABLE_BBR=""
 SS_PORT=""
 SS_PASSWORD=""
 REGISTER_CHOICE=""
@@ -18,6 +19,8 @@ REGISTER_TOKEN=""
 
 WORK_DIR="/root/vpn-sub-kit"
 SYSCTL_TUNING="/etc/sysctl.d/99-vpn-node-network-tuning.conf"
+BBR_MODULES="/etc/modules-load.d/vpn-node-bbr.conf"
+BBR_SYSCTL="/etc/sysctl.d/99-vpn-node-bbr.conf"
 NGINX_SITE="/etc/nginx/sites-available/vpn-fallback.conf"
 NGINX_SITE_LINK="/etc/nginx/sites-enabled/vpn-fallback.conf"
 NGINX_SYSTEMD_LIMITS="/etc/systemd/system/nginx.service.d/limits.conf"
@@ -45,6 +48,8 @@ Options:
   --trojan-password VALUE
   --enable-ss
   --disable-ss
+  --enable-bbr          Enable FQ + BBR and load tcp_bbr at boot (default)
+  --skip-bbr            Leave existing BBR configuration unchanged
   --ss-port VALUE
   --ss-password VALUE
   --registry-url VALUE
@@ -76,6 +81,8 @@ parse_args() {
       --trojan-password) TROJAN_PASSWORD="${2:-}"; shift 2 ;;
       --enable-ss) ENABLE_SS="y"; shift ;;
       --disable-ss) ENABLE_SS="n"; shift ;;
+      --enable-bbr) ENABLE_BBR="y"; shift ;;
+      --skip-bbr) ENABLE_BBR="n"; shift ;;
       --ss-port) SS_PORT="${2:-}"; shift 2 ;;
       --ss-password) SS_PASSWORD="${2:-}"; shift 2 ;;
       --registry-url) REGISTRY_URL="${2:-}"; REGISTER_CHOICE="y"; shift 2 ;;
@@ -171,7 +178,7 @@ ensure_linux_root() {
 install_dependencies() {
   log "installing dependencies"
   run_cmd apt-get update
-  run_cmd apt-get install -y curl jq nginx certbot python3-certbot-nginx ufw openssl ca-certificates python3
+  run_cmd apt-get install -y curl jq nginx certbot python3-certbot-nginx ufw openssl ca-certificates python3 kmod
   if ! command -v sing-box >/dev/null 2>&1; then
     warn "sing-box is not installed by apt on every distro; attempting official package install"
     run_cmd bash -c "curl -fsSL https://sing-box.app/deb-install.sh | bash"
@@ -228,8 +235,32 @@ path.write_text(text)
 PY
 }
 
+configure_bbr() {
+  [[ "$ENABLE_BBR" == "y" ]] || return 0
+  log "enabling FQ + BBR and automatic tcp_bbr loading at boot"
+  # BBR may already be built into the kernel even when modprobe fails.
+  if ! run_cmd modprobe tcp_bbr; then
+    warn "could not load tcp_bbr; checking built-in BBR support"
+  fi
+  if [[ "$DRY_RUN" != "1" ]]; then
+    local available
+    available="$(sysctl -n net.ipv4.tcp_available_congestion_control)"
+    [[ " $available " == *" bbr "* ]] || fail "BBR is unavailable in this kernel. Use a BBR-capable kernel or --skip-bbr."
+  fi
+  backup_file "$BBR_MODULES"
+  write_file "$BBR_MODULES" "0644" <<'EOF'
+tcp_bbr
+EOF
+  backup_file "$BBR_SYSCTL"
+  write_file "$BBR_SYSCTL" "0644" <<'EOF'
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+EOF
+}
+
 configure_linux_network_tuning() {
   log "configuring Linux TCP and nginx concurrency tuning"
+  configure_bbr
   backup_file "$SYSCTL_TUNING"
   write_file "$SYSCTL_TUNING" "0644" <<'EOF'
 # Increase TCP accept queues and connection churn capacity for HTTP/TCP services.
@@ -252,6 +283,9 @@ EOF
 
   patch_nginx_main_config
   run_cmd sysctl --system
+  if [[ "$ENABLE_BBR" == "y" ]]; then
+    run_cmd sysctl -p "$BBR_SYSCTL"
+  fi
   run_cmd systemctl daemon-reload
 }
 
@@ -580,6 +614,11 @@ main() {
   [[ "$EMAIL" == *@* ]] || fail "Invalid email."
 
   TROJAN_PASSWORD="$(prompt_secret "Trojan password" "${TROJAN_PASSWORD:-${existing_trojan:-$(random_secret)}}")"
+  if [[ -z "$ENABLE_BBR" ]]; then
+    ENABLE_BBR="$(prompt "Enable FQ + BBR and load tcp_bbr at boot? Y/n" "y")"
+  fi
+  ENABLE_BBR="$(printf '%s' "$ENABLE_BBR" | tr '[:upper:]' '[:lower:]')"
+  [[ "$ENABLE_BBR" == "y" || "$ENABLE_BBR" == "n" ]] || fail "BBR choice must be y or n."
   ENABLE_SS="$(prompt "Enable Shadowsocks? y/N" "${ENABLE_SS:-n}")"
   ENABLE_SS="$(printf '%s' "$ENABLE_SS" | tr '[:upper:]' '[:lower:]')"
   if [[ "$ENABLE_SS" == "y" ]]; then

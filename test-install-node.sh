@@ -53,5 +53,33 @@ require_contains '"tcp_fast_open": true'
 require_contains '"tcp_multi_path": true'
 require_contains '"connect_timeout": "10s"'
 
-printf 'install-node renewal assertions passed
+# Exercise BBR branches without touching host network settings or system files.
+(
+  source /dev/stdin <<<"${SCRIPT%main \"\$@\"}"
+  parse_args --dry-run --enable-bbr
+  output="$(configure_bbr)"
+  [[ "$output" == *"modprobe tcp_bbr"* ]]
+  [[ "$output" == *"$BBR_MODULES"* ]]
+  [[ "$output" == *"net.core.default_qdisc = fq"* ]]
+  [[ "$output" == *"net.ipv4.tcp_congestion_control = bbr"* ]]
+
+  parse_args --skip-bbr
+  [[ -z "$(configure_bbr)" ]]
+
+  ENABLE_BBR=y
+  DRY_RUN=0
+  modprobe() { return 1; }
+  sysctl() { printf 'reno cubic\n'; }
+  if (configure_bbr) >/dev/null 2>&1; then
+    printf 'Expected unsupported BBR to fail\n' >&2
+    exit 1
+  fi
+  sysctl() { printf 'reno cubic bbr\n'; }
+  backup_file() { :; }
+  write_file() { cat; }
+  output="$(configure_bbr 2>/dev/null)"
+  [[ "$output" == *"net.ipv4.tcp_congestion_control = bbr"* ]]
+)
+
+printf 'install-node assertions passed
 '
